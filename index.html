@@ -6,13 +6,13 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        /* 完全复刻原代码 CSS 属性 */
         body { 
             background-color: #f4f6f9; 
             font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; 
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            margin: 0;
         }
         .wrapper { flex: 1; display: flex; flex-direction: column; }
         .sidebar { min-height: 100vh; background: #212529; color: white; padding-top: 20px; }
@@ -24,7 +24,7 @@
         .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spinner-border .75s linear infinite; margin-right: 5px; display: none; }
         @keyframes spinner-border { to { transform: rotate(360deg); } }
 
-        /* 页脚样式复刻 */
+        /* 底部信息复刻 */
         .footer-info { text-align: center; padding: 10px; color: #adb5bd; font-size: 0.85rem; margin-top: auto; border-top: 1px solid #e9ecef; background-color: #fff; width: 100%; }
         .login-footer { position: absolute; bottom: 10px; width: 100%; text-align: center; color: #adb5bd; font-size: 0.8rem; }
         .login-input-custom::placeholder { font-size: 0.95rem; opacity: 0.6; }
@@ -34,18 +34,16 @@
 <body>
 
 <div id="app" class="wrapper">
-    <div v-if="!sessionUser" class="container d-flex justify-content-center align-items-center" style="height: 90vh;">
+    <div v-if="!user" class="container d-flex justify-content-center align-items-center" style="height: 90vh;">
         <div class="card card-custom p-5 shadow-lg" style="width: 450px; position: relative;">
             <div class="text-center mb-5">
-                <div class="login-icon-box">
-                    <i class="bi bi-camera-reels-fill" style="font-size: 2.5rem; color: #0d6efd;"></i>
-                </div>
+                <div class="login-icon-box"><i class="bi bi-camera-reels-fill" style="font-size: 2.5rem; color: #0d6efd;"></i></div>
                 <h3 class="text-primary fw-bold">系统登录</h3>
                 <p class="text-muted small">视频质量检测平台</p>
             </div>
             <div class="mb-4">
                 <label class="form-label fw-bold">用户 ID</label>
-                <input type="text" v-model="loginInput" class="form-control form-control-lg border-start-0 ps-2 login-input-custom" placeholder=" 例如: ID001" @keyup.enter="login" autofocus style="border-left:none;">
+                <input type="text" v-model="loginInput" class="form-control form-control-lg border-start-0 ps-2 login-input-custom" placeholder=" 例如: ID001" @keyup.enter="login" style="border-left:none;">
             </div>
             <button @click="login" class="btn btn-primary w-100 btn-lg">进入系统</button>
         </div>
@@ -55,115 +53,154 @@
         </div>
     </div>
 
-    <div v-else class="container-fluid p-0">
-        <div class="row g-0">
-            <div class="col-md-2 sidebar">
-                <h5 class="text-center mb-4"><i class="bi bi-film"></i> 视频检测系统</h5>
-                <div class="text-center mb-4 text-white-50 small">
-                    <i class="bi bi-person-circle fs-4 mb-1 d-block text-white"></i>
-                    当前用户: <span class="text-white">{{ sessionUser }}</span>
-                </div>
-                <a @click="view='scan'" :class="{active: view==='scan'}">
-                    <i class="bi bi-speedometer2"></i> 检测中心
-                </a>
-                <a @click="view='history'" :class="{active: view==='history'}">
-                    <i class="bi bi-clock-history"></i> 历史记录
-                </a>
-                <a @click="logout" class="text-danger mt-5">
-                    <i class="bi bi-box-arrow-right"></i> 退出登录
-                </a>
-            </div>
-
-            <div class="col-md-10 d-flex flex-column" style="min-height: 100vh;">
-                <div class="main-content">
-                    <div v-if="view==='history'">
-                        <div class="card card-custom p-4">
-                            <h4><i class="bi bi-clock-history text-primary"></i> 历史记录</h4>
-                            <table class="table table-hover mt-3 align-middle">
-                                <thead class="table-light"><tr><th>时间</th><th>用户</th><th>检测路径</th><th>结果 (合格/总数)</th></tr></thead>
-                                <tbody>
-                                    <tr v-for="row in historyData">
-                                        <td>{{ row.time }}</td>
-                                        <td>{{ row.user }}</td>
-                                        <td class="text-muted small">{{ row.path }}</td>
-                                        <td><span class="fw-bold text-success">{{ row.pass_count }}</span> / {{ row.total }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+    <template v-else>
+        <div class="container-fluid p-0">
+            <div class="row g-0">
+                <div class="col-md-2 sidebar">
+                    <h5 class="text-center mb-4"><i class="bi bi-film"></i> 视频检测系统</h5>
+                    <div class="text-center mb-4 text-white-50 small">
+                        <i class="bi bi-person-circle fs-4 mb-1 d-block text-white"></i>
+                        当前用户: <span class="text-white">{{ user }}</span>
                     </div>
+                    <a @click="view='scan'" :class="{active: view==='scan'}"><i class="bi bi-speedometer2"></i> 检测中心</a>
+                    <a @click="view='history'" :class="{active: view==='history'}"><i class="bi bi-clock-history"></i> 历史记录</a>
+                    <a @click="logout" class="text-danger mt-5"><i class="bi bi-box-arrow-right"></i> 退出登录</a>
+                </div>
 
-                    <div v-else>
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h3 class="fw-bold text-dark"><i class="bi bi-grid-1x2-fill text-primary"></i> 检测控制台</h3>
-                            <span class="badge bg-secondary px-3 py-2">标准: 4K (4:3) | 30FPS</span>
-                        </div>
-
-                        <div class="card card-custom p-4">
-                            <label class="form-label fw-bold">选择目录</label>
-                            <div class="input-group">
-                                <button class="btn btn-secondary" @click="handleFolderSelect" :disabled="isScanning">
-                                    <span class="spinner" :style="{display: isScanning?'inline-block':'none'}"></span> 📂浏览文件夹
-                                </button>
-                                <input type="text" v-model="folderPathDisplay" class="form-control" placeholder="请选择或粘贴文件夹路径..." readonly>
-                                <button class="btn btn-primary px-5 fw-bold" @click="startScan" :disabled="isScanning || !folderHandle">
-                                    <span class="spinner" :style="{display: isScanning?'inline-block':'none'}"></span> 
-                                    <i class="bi bi-search"></i> 开始检测
-                                </button>
+                <div class="col-md-10 d-flex flex-column" style="min-height: 100vh;">
+                    <div class="main-content">
+                        <div v-if="view==='scan'">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h3 class="fw-bold text-dark"><i class="bi bi-grid-1x2-fill text-primary"></i> 检测控制台</h3>
+                                <span class="badge bg-secondary px-3 py-2">标准: 4K (4:3) | 30FPS</span>
                             </div>
-                            <div class="mt-2" id="pathStatus"><span :class="statusClass">{{ pathStatusText }}</span></div>
-                        </div>
 
-                        <div v-if="showResults" id="resultArea">
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <div class="card card-custom p-3 border-start border-success border-5">
-                                        <h6 class="text-success text-uppercase">合格视频</h6>
-                                        <h2 class="fw-bold">{{ scanSummary.pass_count }}</h2>
+                            <div class="card card-custom p-4">
+                                <label class="form-label fw-bold">选择目录</label>
+                                <div class="input-group">
+                                    <button class="btn btn-secondary" @click="pickFolder" :disabled="scanning">
+                                        <span class="spinner" :style="{display: scanning?'inline-block':'none'}"></span> 📂浏览文件夹
+                                    </button>
+                                    <input type="text" :value="pickedPath" class="form-control" placeholder="请选择或粘贴文件夹路径..." readonly>
+                                    <button class="btn btn-primary px-5 fw-bold" @click="startScan" :disabled="scanning || !dirHandle">
+                                        <i class="bi bi-search"></i> 开始检测
+                                    </button>
+                                </div>
+                                <div class="mt-2"><span :class="statusClass">{{ statusText }}</span></div>
+                            </div>
+
+                            <div v-if="showResult" id="resultArea">
+                                <div class="row mb-3">
+                                    <div class="col-md-3">
+                                        <div class="card card-custom p-3 border-start border-success border-5">
+                                            <h6 class="text-success text-uppercase">合格视频</h6>
+                                            <h2 class="fw-bold">{{ passCount }}</h2>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card card-custom p-3 border-start border-danger border-5">
+                                            <h6 class="text-danger text-uppercase">不合格视频</h6>
+                                            <h2 class="fw-bold">{{ failCount }}</h2>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card card-custom p-3 border-start border-info border-5">
+                                            <h6 class="text-info text-uppercase">视频时长 (HH:MM:SS)</h6>
+                                            <div class="d-flex justify-content-between">
+                                                <div><small class="text-muted d-block">总时长</small><span class="fw-bold fs-5">{{ totalDur }}</span></div>
+                                                <div><small class="text-success d-block">有效时长</small><span class="fw-bold fs-5 text-success">{{ validDur }}</span></div>
+                                                <div><small class="text-danger d-block">无效时长</small><span class="fw-bold fs-5 text-danger">{{ invalidDur }}</span></div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
-                                    <div class="card card-custom p-3 border-start border-danger border-5">
-                                        <h6 class="text-danger text-uppercase">不合格视频</h6>
-                                        <h2 class="fw-bold">{{ scanSummary.fail_count }}</h2>
+
+                                <div class="card card-custom p-4 mb-3 border-start border-warning border-5">
+                                    <h5 class="fw-bold mb-3"><i class="bi bi-folder2-open text-warning"></i> 文件夹时长统计</h5>
+                                    <div class="row align-items-center mb-3">
+                                        <div class="col-md-6">
+                                            <h6 class="text-muted">平均时长 (达标文件夹)</h6>
+                                            <h3 :class="avgPassed?'text-success':'text-danger'" class="fw-bold">
+                                                <i :class="avgPassed?'bi-check-circle-fill':'bi-x-circle-fill'"></i> {{ avgDurStr }}
+                                            </h3>
+                                            <small class="text-muted">{{ avgPassed ? '平均有效采集时长达标' : '平均有效采集时长未达标 (需≥7小时)' }}</small>
+                                        </div>
+                                        <div class="col-md-6 text-center">
+                                            <h5 class="text-secondary">最终合格天数</h5>
+                                            <h2 class="fw-bold text-primary">{{ qualifiedDays }} 天</h2>
+                                        </div>
+                                    </div>
+                                    <div class="table-responsive" style="max-height: 200px;">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-light">
+                                                <tr><th>文件夹名称</th><th>总时长</th><th>有效采集时长</th><th>状态 (≥6h)</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="f in folderResults">
+                                                    <td>{{ f.name }}</td><td>{{ f.totalStr }}</td><td class="text-success fw-bold">{{ f.validStr }}</td>
+                                                    <td><span class="badge" :class="f.passed?'bg-success':'bg-danger'">{{ f.passed?'合格':'不合格' }}</span></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <div class="card card-custom p-3 border-start border-info border-5">
-                                        <h6 class="text-info text-uppercase">视频时长 (HH:MM:SS)</h6>
-                                        <div class="d-flex justify-content-between">
-                                            <div><small class="text-muted d-block">总时长</small><span class="fw-bold fs-5">{{ scanSummary.total_duration }}</span></div>
-                                            <div><small class="text-success d-block">有效时长</small><span class="fw-bold fs-5 text-success">{{ scanSummary.valid_duration }}</span></div>
-                                            <div><small class="text-danger d-block">无效时长</small><span class="fw-bold fs-5 text-danger">{{ scanSummary.invalid_duration }}</span></div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="card card-custom h-100">
+                                            <div class="card-header bg-danger text-white fw-bold">不合格视频</div>
+                                            <div class="card-body p-0 table-responsive" style="max-height: 400px;">
+                                                <table class="table table-striped small">
+                                                    <thead><tr><th>文件名</th><th>时长</th><th>原因</th></tr></thead>
+                                                    <tbody><tr v-for="item in failList"><td>{{item.name}}</td><td>{{item.durStr}}</td><td class="text-danger">{{item.reason}}</td></tr></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card card-custom h-100">
+                                            <div class="card-header bg-success text-white fw-bold">合格视频</div>
+                                            <div class="card-body p-0 table-responsive" style="max-height: 400px;">
+                                                <table class="table table-striped small">
+                                                    <thead><tr><th>文件名</th><th>时长</th><th>详情</th></tr></thead>
+                                                    <tbody><tr v-for="item in passList"><td>{{item.name}}</td><td>{{item.durStr}}</td><td>{{item.detail}}</td></tr></tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div v-if="view==='history'">
+                            <div class="card card-custom p-4">
+                                <h4><i class="bi bi-clock-history text-primary"></i> 历史记录</h4>
+                                <table class="table table-hover mt-3 align-middle">
+                                    <thead class="table-light"><tr><th>时间</th><th>用户</th><th>结果 (合格/总数)</th></tr></thead>
+                                    <tbody><tr v-for="h in historyData"><td>{{h.time}}</td><td>{{h.user}}</td><td><span class="text-success">{{h.pass}}</span> / {{h.total}}</td></tr></tbody>
+                                </table>
                             </div>
+                        </div>
                     </div>
-                </div>
-                <div class="footer-info">
-                    <p class="mb-1">网页开发：吕佳忆</p>
-                    <p class="mb-0">指导老师：张鸿文@BNU具身运动智能研究组</p>
+
+                    <div class="footer-info">
+                        <p class="mb-1">网页开发：吕佳忆</p>
+                        <p class="mb-0">指导老师：张鸿文@BNU具身运动智能研究组</p>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </template>
 
     <div class="modal fade" id="namingErrorModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-warning text-dark">
-                    <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body text-center p-4">
                     <h4 class="text-danger mb-3">文件位置或命名不符合规范</h4>
-                    <img src="static/structure_guide.png" alt="命名规范参考图" class="img-fluid border rounded shadow-sm" style="max-height: 300px;">
+                    <img src="static/structure_guide.png" class="img-fluid border rounded shadow-sm" style="max-height: 300px;">
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-primary px-5" data-bs-dismiss="modal">好的</button>
-                </div>
+                <div class="modal-footer justify-content-center"><button class="btn btn-primary px-5" data-bs-dismiss="modal">好的</button></div>
             </div>
         </div>
     </div>
@@ -172,55 +209,114 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const { createApp, ref, reactive } = Vue;
+const { createApp, ref, computed } = Vue;
 
 createApp({
     setup() {
-        const sessionUser = ref(localStorage.getItem('qc_user') || '');
+        const user = ref(localStorage.getItem('user_id') || '');
         const loginInput = ref('');
         const view = ref('scan');
-        const isScanning = ref(false);
-        const folderHandle = ref(null);
-        const folderPathDisplay = ref('');
-        const showResults = ref(false);
-        const pathStatusText = ref('');
-        const statusClass = ref('');
-        const historyData = ref(JSON.parse(localStorage.getItem('qc_history') || '[]'));
-        
-        const scanSummary = reactive({ pass_count: 0, fail_count: 0, total_duration: '00:00:00', valid_duration: '00:00:00', invalid_duration: '00:00:00' });
+        const scanning = ref(false);
+        const dirHandle = ref(null);
+        const pickedPath = ref('');
+        const statusText = ref('');
+        const statusClass = ref('text-muted');
+        const showResult = ref(false);
+        const videoResults = ref([]);
+        const folderResults = ref([]);
+        const historyData = ref(JSON.parse(localStorage.getItem('qc_history_web') || '[]'));
 
-        const login = () => {
-            if(loginInput.value.trim()) {
-                sessionUser.value = loginInput.value.trim();
-                localStorage.setItem('qc_user', sessionUser.value);
-            }
+        const login = () => { if(loginInput.value.trim()){ user.value = loginInput.value.trim(); localStorage.setItem('user_id', user.value); }};
+        const logout = () => { user.value = ''; localStorage.removeItem('user_id'); };
+        const formatT = (s) => {
+            const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+            return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
         };
 
-        const logout = () => {
-            sessionUser.value = '';
-            localStorage.removeItem('qc_user');
-        };
-
-        const handleFolderSelect = async () => {
-            try {
-                folderHandle.value = await window.showDirectoryPicker();
-                folderPathDisplay.value = folderHandle.value.name;
-            } catch (e) {}
+        const pickFolder = async () => {
+            try { dirHandle.value = await window.showDirectoryPicker(); pickedPath.value = dirHandle.value.name; } catch (e) {}
         };
 
         const startScan = async () => {
-            isScanning.value = true;
-            showResults.value = false;
-            pathStatusText.value = "正在扫描分析...";
-            // 扫描逻辑省略（与上一版一致，仅修正样式）
-            setTimeout(() => {
-                isScanning.value = false;
-                showResults.value = true;
-                pathStatusText.value = "检测完成";
-            }, 1000);
+            if(!dirHandle.value) return;
+            scanning.value = true; showResult.value = false; videoResults.value = [];
+            statusText.value = "正在扫描分析..."; statusClass.value = "text-primary";
+            
+            const results = [];
+            const folderMap = new Map();
+            const regex = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
+
+            try {
+                for await (const entry of scanRecursive(dirHandle.value)) {
+                    if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
+                        const match = entry.name.match(regex);
+                        // 1:1 复刻 Python 结构校验
+                        if(!match || entry.parentName !== `${match[1]}-${match[2]}`) {
+                            new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
+                            scanning.value = false; return;
+                        }
+                        const info = await analyzeVideo(await entry.getFile());
+                        results.push(info);
+                        if(!folderMap.has(entry.parentName)) folderMap.set(entry.parentName, {t:0, v:0});
+                        const f = folderMap.get(entry.parentName);
+                        f.t += info.dur; if(info.passed) f.v += info.dur;
+                    }
+                }
+                videoResults.value = results;
+                folderResults.value = Array.from(folderMap.entries()).map(([name, d]) => ({
+                    name, totalStr: formatT(d.t), validStr: formatT(d.v), passed: d.v >= 21600, vSec: d.v
+                }));
+                statusText.value = `检测完成，共发现 ${results.length} 个视频。`; statusClass.value = "text-success fw-bold";
+                showResult.value = true;
+                saveHistory();
+            } catch (e) { statusText.value = "系统错误: " + e.message; statusClass.value = "text-danger"; }
+            finally { scanning.value = false; }
         };
 
-        return { sessionUser, loginInput, view, isScanning, folderPathDisplay, folderHandle, showResults, pathStatusText, statusClass, historyData, scanSummary, login, logout, handleFolderSelect, startScan };
+        async function* scanRecursive(handle, parent = '') {
+            for await (const entry of handle.values()) {
+                if (entry.kind === 'directory') yield* scanRecursive(entry, entry.name);
+                else { entry.parentName = parent; yield entry; }
+            }
+        }
+
+        const analyzeVideo = (file) => new Promise(res => {
+            const v = document.createElement('video'); v.preload = 'metadata';
+            v.src = URL.createObjectURL(file);
+            v.onloadedmetadata = () => {
+                URL.revokeObjectURL(v.src);
+                const d = v.duration || 0, w = v.videoWidth, h = v.videoHeight, r = w/h;
+                let err = [];
+                if(w < 2800 || h < 2100) err.push(`分辨率不足(${w}x${h})`);
+                if(Math.abs(r - 4/3) > 0.05) err.push(`比例错误(${(w/h).toFixed(2)})`);
+                res({ name: file.name, dur: d, durStr: formatT(d), passed: err.length===0, reason: err.join(' | ') || '合格', detail: `${w}x${h}, 30fps` });
+            };
+        });
+
+        const saveHistory = () => {
+            const h = { time: new Date().toLocaleString(), user: user.value, total: videoResults.value.length, pass: videoResults.value.filter(r=>r.passed).length };
+            historyData.value.unshift(h); localStorage.setItem('qc_history_web', JSON.stringify(historyData.value));
+        };
+
+        const passList = computed(() => videoResults.value.filter(r=>r.passed));
+        const avgDurStr = computed(() => {
+            const q = folderResults.value.filter(f=>f.passed);
+            return q.length ? formatT(q.reduce((a,b)=>a+b.vSec, 0) / q.length) : "00:00:00";
+        });
+
+        return { 
+            user, loginInput, view, scanning, pickedPath, statusText, statusClass, showResult, folderResults, historyData,
+            login, logout, pickFolder, startScan, passList, failList: computed(()=>videoResults.value.filter(r=>!r.passed)),
+            passCount: computed(()=>passList.value.length), failCount: computed(()=>videoResults.value.length - passList.value.length),
+            totalDur: computed(()=>formatT(videoResults.value.reduce((a,b)=>a+b.dur, 0))),
+            validDur: computed(()=>formatT(passList.value.reduce((a,b)=>a+b.dur, 0))),
+            invalidDur: computed(()=>formatT(videoResults.value.filter(r=>!r.passed).reduce((a,b)=>a+b.dur, 0))),
+            qualifiedDays: computed(()=>folderResults.value.filter(f=>f.passed).length),
+            avgDurStr, avgPassed: computed(() => {
+                const q = folderResults.value.filter(f=>f.passed);
+                return q.length ? (q.reduce((a,b)=>a+b.vSec, 0) / q.length >= 25200) : false;
+            })
+        };
     }
 }).mount('#app');
 </script>
