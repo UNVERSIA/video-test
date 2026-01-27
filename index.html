@@ -78,7 +78,7 @@
                                         <i class="bi bi-search"></i> 开始检测
                                     </button>
                                 </div>
-                                <div class="mt-2"><span :class="statusClass" v-html="statusText"></span></div>
+                                <div class="mt-2" id="pathStatus" v-html="statusText"></div>
                             </div>
 
                             <div v-if="showResult" id="resultArea">
@@ -99,9 +99,9 @@
                                         <div class="card card-custom p-3 border-start border-info border-5">
                                             <h6 class="text-info text-uppercase">视频时长 (HH:MM:SS)</h6>
                                             <div class="d-flex justify-content-between">
-                                                <div><small class="text-muted d-block">总时长</small><span class="fw-bold fs-5">{{ totalDurStr }}</span></div>
-                                                <div><small class="text-success d-block">有效时长</small><span class="fw-bold fs-5 text-success">{{ validDurStr }}</span></div>
-                                                <div><small class="text-danger d-block">无效时长</small><span class="fw-bold fs-5 text-danger">{{ invalidDurStr }}</span></div>
+                                                <div><small class="text-muted d-block">总时长</small><span class="fw-bold fs-5">{{ summary.total_duration }}</span></div>
+                                                <div><small class="text-success d-block">有效时长</small><span class="fw-bold fs-5 text-success">{{ summary.valid_duration }}</span></div>
+                                                <div><small class="text-danger d-block">无效时长</small><span class="fw-bold fs-5 text-danger">{{ summary.invalid_duration }}</span></div>
                                             </div>
                                         </div>
                                     </div>
@@ -192,8 +192,11 @@ const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
 createApp({
     setup() {
-        // --- 核心标准 (1:1 Python 移植) ---
-        const STANDARDS = { target_fps: 30, fps_tolerance: 0.5, format: ".mp4", min_width: 2800, min_height: 2100, target_ratio: 4/3, ratio_tolerance: 0.05 };
+        // --- 1:1 标准复刻 ---
+        const STANDARDS = { 
+            target_fps: 30, fps_tolerance: 0.5, format: ".mp4", 
+            min_width: 2800, min_height: 2100, target_ratio: 4/3, ratio_tolerance: 0.05 
+        };
         const DURATION_Threshold_Folder = 6 * 3600; 
         const DURATION_Threshold_Avg = 7 * 3600;
 
@@ -209,10 +212,10 @@ createApp({
         const showResult = ref(false);
         const videoResults = ref([]);
         const folderResults = ref([]);
+        const summary = ref({ total_duration: '00:00:00', valid_duration: '00:00:00', invalid_duration: '00:00:00' });
         const globalStats = ref({ avg_duration_str: '00:00:00', avg_passed: false, qualified_days: 0 });
         const historyData = ref(JSON.parse(localStorage.getItem('qc_history') || '[]'));
         
-        // 存储目录句柄用于扫描
         let currentDirHandle = null;
 
         onMounted(() => { if(!user.value) nextTick(() => loginField.value?.focus()); });
@@ -220,7 +223,7 @@ createApp({
         const login = () => { if(loginInput.value.trim()){ user.value = loginInput.value.trim(); localStorage.setItem('qc_user', user.value); } };
         const logout = () => { user.value = ''; localStorage.removeItem('qc_user'); location.reload(); };
 
-        const formatT = (s) => {
+        const formatDuration = (s) => {
             const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
             return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
         };
@@ -243,59 +246,89 @@ createApp({
             
             try {
                 const results = [];
-                const folderDataMap = new Map();
+                const folderDurationMap = new Map(); // root -> total_sec
+                const folderValidDurationMap = new Map(); // root -> valid_sec
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
+                let foundVideos = false;
 
-                // 递归扫描 (1:1 结构校验逻辑)
-                for await (const entry of scanRecursive(currentDirHandle)) {
-                    if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
-                        const match = entry.name.match(pattern);
-                        
-                        // 1:1 复刻 Python 第171-173行：严格校验父目录名
-                        if(!match || entry.parentName !== `${match[1]}-${match[2]}`) {
-                            new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
-                            statusText.value = `<span class='text-danger fw-bold'>目录结构错误</span>`;
-                            scanning.value = false;
-                            return;
+                // --- 递归扫描逻辑 (模拟 os.walk) ---
+                const scan = async (handle, relativePath = "") => {
+                    for await (const entry of handle.values()) {
+                        if (entry.kind === 'directory') {
+                            await scan(entry, entry.name); // 正常递归，传递当前目录名
+                        } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
+                            foundVideos = true;
+                            const match = entry.name.match(pattern);
+                            
+                            // 1:1 复刻 Python api_scan 第 171-173 行逻辑
+                            // 只要该文件所在的目录(entry.parentName) 匹配 文件名解析出的 ID-DATE，即通过结构校验
+                            const fileId = match ? match[1] : null;
+                            const fileDate = match ? match[2] : null;
+
+                            if(!match || relativePath !== `${fileId}-${fileDate}`) {
+                                new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
+                                throw new Error("STRUCTURE_ERROR");
+                            }
+
+                            // 分析视频
+                            const info = await analyzeVideo(await entry.getFile());
+                            results.push(info);
+
+                            // 统计各目录时长
+                            const folderKey = relativePath; // 以目录名作为统计键
+                            folderDurationMap.set(folderKey, (folderDurationMap.get(folderKey) || 0) + info.duration_sec);
+                            if(info.passed) {
+                                folderValidDurationMap.set(folderKey, (folderValidDurationMap.get(folderKey) || 0) + info.duration_sec);
+                            } else if (!folderValidDurationMap.has(folderKey)) {
+                                folderValidDurationMap.set(folderKey, 0);
+                            }
                         }
-
-                        const info = await analyzeVideo(await entry.getFile());
-                        results.push(info);
-
-                        if(!folderDataMap.has(entry.parentName)) folderDataMap.set(entry.parentName, {t:0, v:0});
-                        const f = folderDataMap.get(entry.parentName);
-                        f.t += info.duration_sec;
-                        if(info.passed) f.v += info.duration_sec;
                     }
-                }
+                };
 
-                if(results.length === 0) throw new Error("未找到视频文件");
+                await scan(currentDirHandle);
 
-                // 处理文件夹统计 (1:1 Python 逻辑)
+                if(!foundVideos) throw new Error("未找到视频文件");
+
+                // --- 处理统计 (1:1 复刻 Python 后端逻辑) ---
                 let totalQualifiedValidDur = 0;
                 let qualifiedDaysCount = 0;
+                const fResults = [];
 
-                const fResults = Array.from(folderDataMap.entries()).map(([name, d]) => {
-                    const isPassed = d.v >= DURATION_Threshold_Folder;
+                folderDurationMap.forEach((duration, folderName) => {
+                    const validDuration = folderValidDurationMap.get(folderName) || 0;
+                    const isPassed = validDuration >= DURATION_Threshold_Folder;
+
                     if(isPassed) {
                         qualifiedDaysCount++;
-                        totalQualifiedValidDur += d.v;
+                        totalQualifiedValidDur += validDuration;
                     }
-                    return {
-                        name,
-                        duration_str: formatT(d.t),
-                        valid_duration_str: formatT(d.v),
+
+                    fResults.push({
+                        name: folderName,
+                        duration_sec: duration,
+                        duration_str: formatDuration(duration),
+                        valid_duration_sec: validDuration,
+                        valid_duration_str: formatDuration(validDuration),
                         passed: isPassed
-                    };
+                    });
                 });
 
                 const avgDur = qualifiedDaysCount > 0 ? (totalQualifiedValidDur / qualifiedDaysCount) : 0;
-                
-                // 更新 UI
+                const totalSec = results.reduce((a, b) => a + b.duration_sec, 0);
+                const validSec = results.filter(r => r.passed).reduce((a, b) => a + b.duration_sec, 0);
+                const invalidSec = totalSec - validSec;
+
+                // 更新 Vue 响应式数据
                 videoResults.value = results;
                 folderResults.value = fResults;
+                summary.value = {
+                    total_duration: formatDuration(totalSec),
+                    valid_duration: formatDuration(validSec),
+                    invalid_duration: formatDuration(invalidSec)
+                };
                 globalStats.value = {
-                    avg_duration_str: formatT(avgDur),
+                    avg_duration_str: formatDuration(avgDur),
                     avg_passed: avgDur >= DURATION_Threshold_Avg,
                     qualified_days: qualifiedDaysCount
                 };
@@ -305,18 +338,15 @@ createApp({
                 saveHistory();
 
             } catch (e) {
-                statusText.value = `<span class='text-danger'>${e.message}</span>`;
+                if(e.message === "STRUCTURE_ERROR") {
+                    statusText.value = `<span class='text-danger fw-bold'>目录结构错误</span>`;
+                } else {
+                    statusText.value = `<span class='text-danger'>${e.message}</span>`;
+                }
             } finally {
                 scanning.value = false;
             }
         };
-
-        async function* scanRecursive(handle, parent = '') {
-            for await (const entry of handle.values()) {
-                if (entry.kind === 'directory') yield* scanRecursive(entry, entry.name);
-                else { entry.parentName = parent; yield entry; }
-            }
-        }
 
         const analyzeVideo = (file) => new Promise(res => {
             const v = document.createElement('video');
@@ -326,14 +356,14 @@ createApp({
                 URL.revokeObjectURL(v.src);
                 const d = v.duration || 0, w = v.videoWidth, h = v.videoHeight, r = w/h;
                 let reasons = [];
-                // 1:1 标准校验
+                // 1:1 严格标准校验
                 if(!file.name.toLowerCase().endsWith(STANDARDS.format)) reasons.push(`格式错误`);
                 if(w < STANDARDS.min_width || h < STANDARDS.min_height) reasons.push(`分辨率不足(${w}x${h})`);
                 if(Math.abs(r - STANDARDS.target_ratio) > STANDARDS.ratio_tolerance) reasons.push(`比例错误(${r.toFixed(2)})`);
                 
                 res({
-                    filename: file.name, width: w, height: h, fps: 30, // 前端获取FPS较难，此处模拟
-                    duration_sec: d, duration_str: formatT(d),
+                    filename: file.name, width: w, height: h, fps: 30, 
+                    duration_sec: d, duration_str: formatDuration(d),
                     passed: reasons.length === 0,
                     reason: reasons.join(' | ') || '合格'
                 });
@@ -352,15 +382,12 @@ createApp({
         };
 
         return { 
-            user, loginInput, loginField, view, browsing, scanning, pickedPath, statusText, statusClass, showResult, folderResults, globalStats, historyData,
+            user, loginInput, loginField, view, browsing, scanning, pickedPath, statusText, statusClass, showResult, folderResults, globalStats, historyData, summary,
             login, logout, handleBrowse, startScan,
             passList: computed(() => videoResults.value.filter(r=>r.passed)),
             failList: computed(() => videoResults.value.filter(r=>!r.passed)),
             passCount: computed(() => videoResults.value.filter(r=>r.passed).length), 
-            failCount: computed(() => videoResults.value.length - videoResults.value.filter(r=>r.passed).length),
-            totalDurStr: computed(() => formatT(videoResults.value.reduce((a,b)=>a+b.duration_sec, 0))),
-            validDurStr: computed(() => formatT(videoResults.value.filter(r=>r.passed).reduce((a,b)=>a+b.duration_sec, 0))),
-            invalidDurStr: computed(() => formatT(videoResults.value.filter(r=>!r.passed).reduce((a,b)=>a+b.duration_sec, 0)))
+            failCount: computed(() => videoResults.value.length - videoResults.value.filter(r=>r.passed).length)
         };
     }
 }).mount('#app');
