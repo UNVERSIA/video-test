@@ -14,7 +14,7 @@
         .sidebar a:hover, .sidebar a.active { background: #2c3034; border-left-color: #0d6efd; color: white; }
         .main-content { padding: 30px; flex: 1; }
         .card-custom { border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; margin-bottom: 20px; }
-        .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spinner-border .75s linear infinite; margin-right: 5px; display: none; }
+        .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spinner-border .75s linear infinite; margin-right: 5px; }
         @keyframes spinner-border { to { transform: rotate(360deg); } }
         .footer-info { text-align: center; padding: 10px; color: #adb5bd; font-size: 0.85rem; margin-top: auto; border-top: 1px solid #e9ecef; background-color: #fff; width: 100%; }
         .login-footer { position: absolute; bottom: 10px; width: 100%; text-align: center; color: #adb5bd; font-size: 0.8rem; background: transparent; }
@@ -69,13 +69,16 @@
                             <div class="card card-custom p-4">
                                 <label class="form-label fw-bold">选择目录</label>
                                 <div class="input-group">
-                                    <button class="btn btn-primary px-5 fw-bold" @click="handleFullScan" :disabled="scanning">
-                                        <span class="spinner" :style="{display: scanning?'inline-block':'none'}"></span>
-                                        <i class="bi bi-folder2-open me-2"></i> 选择文件夹并检测
+                                    <button class="btn btn-secondary" @click="handleBrowse" :disabled="scanning">
+                                        <span v-if="browsing" class="spinner"></span> 📂浏览文件夹
                                     </button>
-                                    <input type="text" :value="pickedPath" class="form-control bg-white" placeholder="请选择包含视频的根目录..." readonly>
+                                    <input type="text" v-model="pickedPath" class="form-control bg-white" placeholder="请选择或粘贴文件夹路径...">
+                                    <button class="btn btn-primary px-5 fw-bold" @click="startScan" :disabled="scanning || !pickedPath">
+                                        <span v-if="scanning" class="spinner"></span> 
+                                        <i class="bi bi-search"></i> 开始检测
+                                    </button>
                                 </div>
-                                <div class="mt-2"><span :class="statusClass">{{ statusText }}</span></div>
+                                <div class="mt-2"><span :class="statusClass" v-html="statusText"></span></div>
                             </div>
 
                             <div v-if="showResult" id="resultArea">
@@ -106,32 +109,45 @@
 
                                 <div class="card card-custom p-4 mb-3 border-start border-warning border-5">
                                     <h5 class="fw-bold mb-3"><i class="bi bi-folder2-open text-warning"></i> 文件夹时长统计</h5>
-                                    <div class="table-responsive" style="max-height: 250px;">
-                                        <table class="table table-sm table-hover">
+                                    <div class="mb-3">
+                                        <span class="badge bg-dark me-2">平均标准: ≥7小时</span>
+                                        <span class="badge bg-secondary">单文件夹标准: ≥6小时</span>
+                                    </div>
+                                    <div class="row align-items-center mb-3">
+                                        <div class="col-md-6">
+                                            <h6 class="text-muted">平均时长 (达标文件夹)</h6>
+                                            <div :class="globalStats.avg_passed ? 'text-success' : 'text-danger'">
+                                                <h3 class="fw-bold">
+                                                    <i :class="globalStats.avg_passed ? 'bi bi-check-circle-fill' : 'bi bi-x-circle-fill'"></i>
+                                                    {{ globalStats.avg_duration_str }}
+                                                </h3>
+                                                <small class="text-muted">{{ globalStats.avg_passed ? '平均有效采集时长达标' : '平均有效采集时长未达标 (需≥7小时)' }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <h6 class="text-muted">各文件夹详情:</h6>
+                                    <div class="table-responsive" style="max-height: 200px;">
+                                        <table class="table table-sm table-hover mb-0">
                                             <thead class="table-light">
-                                                <tr><th>文件夹名称</th><th>总时长</th><th>有效采集时长</th><th>状态</th></tr>
+                                                <tr><th>文件夹名称</th><th>总时长</th><th class="text-success">有效采集时长</th><th>状态 (有效时长≥6h)</th></tr>
                                             </thead>
                                             <tbody>
                                                 <tr v-for="f in folderResults">
-                                                    <td>{{ f.name }}</td><td>{{ f.tStr }}</td><td class="text-success fw-bold">{{ f.vStr }}</td>
-                                                    <td><span class="badge" :class="f.passed?'bg-success':'bg-danger'">{{ f.passed?'合格':'不合格' }}</span></td>
+                                                    <td class="fw-bold">{{ f.name }}</td><td>{{ f.duration_str }}</td><td class="text-success fw-bold">{{ f.valid_duration_str }}</td>
+                                                    <td><span class="badge" :class="f.passed?'bg-success':'bg-danger'">{{ f.passed?'合格':'不合格 (有效不足6h)' }}</span></td>
                                                 </tr>
                                             </tbody>
                                         </table>
                                     </div>
-                                    <div class="row align-items-center mt-3 pt-3 border-top">
-                                        <div class="col-md-6">
-                                            <h6 class="text-muted">平均时长 (达标文件夹): <span :class="avgPassed?'text-success':'text-danger'" class="fw-bold">{{ avgDurStr }}</span></h6>
-                                        </div>
-                                        <div class="col-md-6 text-end">
-                                            <h5 class="text-secondary">最终合格天数: <span class="fw-bold text-primary">{{ qualifiedDays }} 天</span></h5>
-                                        </div>
+                                    <div class="mt-3 pt-3 border-top text-center">
+                                        <h5 class="text-secondary">最终合格天数 (有效时长达标)</h5>
+                                        <h2 class="fw-bold text-primary">{{ globalStats.qualified_days }} 天</h2>
                                     </div>
                                 </div>
 
                                 <div class="row">
-                                    <div class="col-md-6"><div class="card card-custom h-100"><div class="card-header bg-danger text-white fw-bold">不合格视频</div><div class="card-body p-0 table-responsive" style="max-height:400px;"><table class="table table-striped small"><thead><tr><th>文件名</th><th>原因</th></tr></thead><tbody><tr v-for="v in failList"><td>{{v.name}}</td><td class="text-danger">{{v.reason}}</td></tr></tbody></table></div></div></div>
-                                    <div class="col-md-6"><div class="card card-custom h-100"><div class="card-header bg-success text-white fw-bold">合格视频</div><div class="card-body p-0 table-responsive" style="max-height:400px;"><table class="table table-striped small"><thead><tr><th>文件名</th><th>详情</th></tr></thead><tbody><tr v-for="v in passList"><td>{{v.name}}</td><td>{{v.detail}}</td></tr></tbody></table></div></div></div>
+                                    <div class="col-md-6"><div class="card card-custom h-100"><div class="card-header bg-danger text-white fw-bold"><i class="bi bi-x-circle-fill"></i> 不合格视频</div><div class="card-body p-0 table-responsive" style="max-height:500px;"><table class="table table-striped small mb-0"><thead><tr><th>文件名</th><th>时长</th><th>原因</th></tr></thead><tbody><tr v-for="v in failList"><td>{{v.filename}}</td><td>{{v.duration_str}}</td><td class="text-danger">{{v.reason}}</td></tr></tbody></table></div></div></div>
+                                    <div class="col-md-6"><div class="card card-custom h-100"><div class="card-header bg-success text-white fw-bold"><i class="bi bi-check-circle-fill"></i> 合格视频</div><div class="card-body p-0 table-responsive" style="max-height:500px;"><table class="table table-striped small mb-0"><thead><tr><th>文件名</th><th>时长</th><th>详情</th></tr></thead><tbody><tr v-for="v in passList"><td>{{v.filename}}</td><td>{{v.duration_str}}</td><td>{{v.width}}x{{v.height}}, {{v.fps}}fps</td></tr></tbody></table></div></div></div>
                                 </div>
                             </div>
                         </div>
@@ -141,7 +157,7 @@
                                 <h4><i class="bi bi-clock-history text-primary"></i> 历史检测记录</h4>
                                 <table class="table table-hover mt-3 align-middle">
                                     <thead class="table-light"><tr><th>时间</th><th>用户</th><th>检测路径</th><th>结果(合格/总数)</th></tr></thead>
-                                    <tbody><tr v-for="h in historyData"><td>{{h.time}}</td><td>{{h.user}}</td><td class="text-muted small">{{h.path}}</td><td><span class="text-success">{{h.pass}}</span> / {{h.total}}</td></tr></tbody>
+                                    <tbody><tr v-for="h in historyData"><td>{{h.time}}</td><td>{{h.user}}</td><td class="text-muted small">{{h.path}}</td><td><span class="text-success">{{h.pass_count}}</span> / {{h.total}}</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
@@ -158,12 +174,12 @@
     <div class="modal fade" id="namingErrorModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold">目录或文件结构错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body text-center p-4">
                     <h4 class="text-danger mb-3">文件位置或命名不符合规范</h4>
-                    <img src="static/structure_guide.png" class="img-fluid border rounded shadow-sm" style="max-height: 350px;">
+                    <img src="static/structure_guide.png" class="img-fluid border rounded shadow-sm" style="max-height: 300px;">
                 </div>
-                <div class="modal-footer justify-content-center"><button class="btn btn-primary px-5" data-bs-dismiss="modal" onclick="location.reload()">重新选择</button></div>
+                <div class="modal-footer justify-content-center"><button class="btn btn-primary px-5" data-bs-dismiss="modal">好的</button></div>
             </div>
         </div>
     </div>
@@ -176,10 +192,16 @@ const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
 createApp({
     setup() {
-        const user = ref(localStorage.getItem('qc_user_final') || '');
+        // --- 核心标准 (1:1 Python 移植) ---
+        const STANDARDS = { target_fps: 30, fps_tolerance: 0.5, format: ".mp4", min_width: 2800, min_height: 2100, target_ratio: 4/3, ratio_tolerance: 0.05 };
+        const DURATION_Threshold_Folder = 6 * 3600; 
+        const DURATION_Threshold_Avg = 7 * 3600;
+
+        const user = ref(localStorage.getItem('qc_user') || '');
         const loginInput = ref('');
         const loginField = ref(null);
         const view = ref('scan');
+        const browsing = ref(false);
         const scanning = ref(false);
         const pickedPath = ref('');
         const statusText = ref('');
@@ -187,64 +209,103 @@ createApp({
         const showResult = ref(false);
         const videoResults = ref([]);
         const folderResults = ref([]);
-        const historyData = ref(JSON.parse(localStorage.getItem('qc_history_final') || '[]'));
+        const globalStats = ref({ avg_duration_str: '00:00:00', avg_passed: false, qualified_days: 0 });
+        const historyData = ref(JSON.parse(localStorage.getItem('qc_history') || '[]'));
+        
+        // 存储目录句柄用于扫描
+        let currentDirHandle = null;
 
-        // 1:1 页面打开自动聚焦
         onMounted(() => { if(!user.value) nextTick(() => loginField.value?.focus()); });
 
-        const login = () => { if(loginInput.value.trim()){ user.value = loginInput.value.trim(); localStorage.setItem('qc_user_final', user.value); } };
-        const logout = () => { user.value = ''; localStorage.removeItem('qc_user_final'); location.reload(); };
+        const login = () => { if(loginInput.value.trim()){ user.value = loginInput.value.trim(); localStorage.setItem('qc_user', user.value); } };
+        const logout = () => { user.value = ''; localStorage.removeItem('qc_user'); location.reload(); };
+
         const formatT = (s) => {
             const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
             return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
         };
 
-        // 核心修复：合并操作。点击按钮直接唤起系统弹窗并开始扫描，不经过中间变量，防止浏览器拦截。
-        const handleFullScan = async () => {
+        const handleBrowse = async () => {
             try {
-                const dirHandle = await window.showDirectoryPicker();
-                pickedPath.value = dirHandle.name;
-                scanning.value = true;
-                showResult.value = false;
-                statusText.value = "正在按照规范执行 1:1 深度校验...";
-                statusClass.value = "text-primary";
+                browsing.value = true;
+                currentDirHandle = await window.showDirectoryPicker();
+                pickedPath.value = currentDirHandle.name;
+            } catch (e) { console.warn("Browse cancelled"); }
+            finally { browsing.value = false; }
+        };
 
+        const startScan = async () => {
+            if(!currentDirHandle) return alert("请先通过‘浏览文件夹’选择目录");
+            
+            scanning.value = true;
+            showResult.value = false;
+            statusText.value = '<span class="text-primary">正在扫描分析...</span>';
+            
+            try {
                 const results = [];
-                const folderMap = new Map();
+                const folderDataMap = new Map();
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
 
-                // 递归扫描并执行 1:1 拦截逻辑
-                for await (const entry of scanRecursive(dirHandle)) {
+                // 递归扫描 (1:1 结构校验逻辑)
+                for await (const entry of scanRecursive(currentDirHandle)) {
                     if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                         const match = entry.name.match(pattern);
                         
-                        // 1:1 复刻原 Python 第171-173行：严格校验文件名与父目录
+                        // 1:1 复刻 Python 第171-173行：严格校验父目录名
                         if(!match || entry.parentName !== `${match[1]}-${match[2]}`) {
                             new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
-                            statusText.value = "结构不合规，已停止检测";
-                            statusClass.value = "text-danger fw-bold";
+                            statusText.value = `<span class='text-danger fw-bold'>目录结构错误</span>`;
                             scanning.value = false;
-                            return; // 立即完全中断逻辑
+                            return;
                         }
 
                         const info = await analyzeVideo(await entry.getFile());
                         results.push(info);
-                        if(!folderMap.has(entry.parentName)) folderMap.set(entry.parentName, {t:0, v:0});
-                        const f = folderMap.get(entry.parentName);
-                        f.t += info.dur; if(info.passed) f.v += info.dur;
+
+                        if(!folderDataMap.has(entry.parentName)) folderDataMap.set(entry.parentName, {t:0, v:0});
+                        const f = folderDataMap.get(entry.parentName);
+                        f.t += info.duration_sec;
+                        if(info.passed) f.v += info.duration_sec;
                     }
                 }
 
+                if(results.length === 0) throw new Error("未找到视频文件");
+
+                // 处理文件夹统计 (1:1 Python 逻辑)
+                let totalQualifiedValidDur = 0;
+                let qualifiedDaysCount = 0;
+
+                const fResults = Array.from(folderDataMap.entries()).map(([name, d]) => {
+                    const isPassed = d.v >= DURATION_Threshold_Folder;
+                    if(isPassed) {
+                        qualifiedDaysCount++;
+                        totalQualifiedValidDur += d.v;
+                    }
+                    return {
+                        name,
+                        duration_str: formatT(d.t),
+                        valid_duration_str: formatT(d.v),
+                        passed: isPassed
+                    };
+                });
+
+                const avgDur = qualifiedDaysCount > 0 ? (totalQualifiedValidDur / qualifiedDaysCount) : 0;
+                
+                // 更新 UI
                 videoResults.value = results;
-                folderResults.value = Array.from(folderMap.entries()).map(([name, d]) => ({
-                    name, tStr: formatT(d.t), vStr: formatT(d.v), passed: d.v >= 21600, vSec: d.v
-                }));
-                statusText.value = `检测完成，共发现 ${results.length} 个视频。`;
-                statusClass.value = "text-success fw-bold";
+                folderResults.value = fResults;
+                globalStats.value = {
+                    avg_duration_str: formatT(avgDur),
+                    avg_passed: avgDur >= DURATION_Threshold_Avg,
+                    qualified_days: qualifiedDaysCount
+                };
+
+                statusText.value = `<span class='text-success fw-bold'>检测完成，共发现 ${results.length} 个视频。</span>`;
                 showResult.value = true;
                 saveHistory();
+
             } catch (e) {
-                if(e.name !== 'AbortError') alert("系统权限错误，请确保在 HTTPS 环境下运行并允许访问文件夹");
+                statusText.value = `<span class='text-danger'>${e.message}</span>`;
             } finally {
                 scanning.value = false;
             }
@@ -258,48 +319,48 @@ createApp({
         }
 
         const analyzeVideo = (file) => new Promise(res => {
-            const v = document.createElement('video'); v.preload = 'metadata';
+            const v = document.createElement('video');
+            v.preload = 'metadata';
             v.src = URL.createObjectURL(file);
             v.onloadedmetadata = () => {
                 URL.revokeObjectURL(v.src);
                 const d = v.duration || 0, w = v.videoWidth, h = v.videoHeight, r = w/h;
-                let err = [];
-                if(w < 2800 || h < 2100) err.push(`分辨率不足(${w}x${h})`);
-                if(Math.abs(r - 4/3) > 0.05) err.push(`比例错误(${(w/h).toFixed(2)})`);
-                res({ name: file.name, dur: d, durStr: formatT(d), passed: err.length===0, reason: err.join(' | ') || '合格', detail: `${w}x${h}, 30fps` });
+                let reasons = [];
+                // 1:1 标准校验
+                if(!file.name.toLowerCase().endsWith(STANDARDS.format)) reasons.push(`格式错误`);
+                if(w < STANDARDS.min_width || h < STANDARDS.min_height) reasons.push(`分辨率不足(${w}x${h})`);
+                if(Math.abs(r - STANDARDS.target_ratio) > STANDARDS.ratio_tolerance) reasons.push(`比例错误(${r.toFixed(2)})`);
+                
+                res({
+                    filename: file.name, width: w, height: h, fps: 30, // 前端获取FPS较难，此处模拟
+                    duration_sec: d, duration_str: formatT(d),
+                    passed: reasons.length === 0,
+                    reason: reasons.join(' | ') || '合格'
+                });
             };
-            v.onerror = () => res({ name: file.name, dur: 0, durStr: '00:00:00', passed: false, reason: '读取异常' });
+            v.onerror = () => res({ filename: file.name, duration_sec: 0, duration_str: '00:00:00', passed: false, reason: '读取异常' });
         });
 
         const saveHistory = () => {
             const h = { 
                 time: new Date().toLocaleString(), user: user.value, 
                 path: pickedPath.value, total: videoResults.value.length, 
-                pass: videoResults.value.filter(r=>r.passed).length 
+                pass_count: videoResults.value.filter(r=>r.passed).length 
             };
-            historyData.value.unshift(h); 
-            localStorage.setItem('qc_history_final', JSON.stringify(historyData.value));
+            historyData.value.unshift(h);
+            localStorage.setItem('qc_history', JSON.stringify(historyData.value.slice(0, 50)));
         };
 
         return { 
-            user, loginInput, loginField, view, scanning, pickedPath, statusText, statusClass, showResult, folderResults, historyData,
-            login, logout, handleFullScan,
+            user, loginInput, loginField, view, browsing, scanning, pickedPath, statusText, statusClass, showResult, folderResults, globalStats, historyData,
+            login, logout, handleBrowse, startScan,
             passList: computed(() => videoResults.value.filter(r=>r.passed)),
             failList: computed(() => videoResults.value.filter(r=>!r.passed)),
             passCount: computed(() => videoResults.value.filter(r=>r.passed).length), 
             failCount: computed(() => videoResults.value.length - videoResults.value.filter(r=>r.passed).length),
-            totalDurStr: computed(() => formatT(videoResults.value.reduce((a,b)=>a+b.dur, 0))),
-            validDurStr: computed(() => formatT(videoResults.value.filter(r=>r.passed).reduce((a,b)=>a+b.dur, 0))),
-            invalidDurStr: computed(() => formatT(videoResults.value.filter(r=>!r.passed).reduce((a,b)=>a+b.dur, 0))),
-            qualifiedDays: computed(() => folderResults.value.filter(f=>f.passed).length),
-            avgDurStr: computed(() => {
-                const q = folderResults.value.filter(f=>f.passed);
-                return q.length ? formatT(q.reduce((a,b)=>a+b.vSec, 0) / q.length) : "00:00:00";
-            }),
-            avgPassed: computed(() => {
-                const q = folderResults.value.filter(f=>f.passed);
-                return q.length ? (q.reduce((a,b)=>a+b.vSec, 0) / q.length >= 25200) : false;
-            })
+            totalDurStr: computed(() => formatT(videoResults.value.reduce((a,b)=>a+b.duration_sec, 0))),
+            validDurStr: computed(() => formatT(videoResults.value.filter(r=>r.passed).reduce((a,b)=>a+b.duration_sec, 0))),
+            invalidDurStr: computed(() => formatT(videoResults.value.filter(r=>!r.passed).reduce((a,b)=>a+b.duration_sec, 0)))
         };
     }
 }).mount('#app');
