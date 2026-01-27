@@ -116,8 +116,8 @@
                                     <div class="row align-items-center mb-3">
                                         <div class="col-md-6">
                                             <h6 class="text-muted">平均时长 (达标文件夹)</h6>
-                                            <div :class="globalStats.avg_passed ? 'text-success' : 'text-danger'">
-                                                <h3 class="fw-bold">
+                                            <div id="avgFolderStatus">
+                                                <h3 :class="globalStats.avg_passed ? 'text-success' : 'text-danger'" class="fw-bold">
                                                     <i :class="globalStats.avg_passed ? 'bi bi-check-circle-fill' : 'bi bi-x-circle-fill'"></i>
                                                     {{ globalStats.avg_duration_str }}
                                                 </h3>
@@ -192,11 +192,7 @@ const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
 createApp({
     setup() {
-        // --- 1:1 标准复刻 ---
-        const STANDARDS = { 
-            target_fps: 30, fps_tolerance: 0.5, format: ".mp4", 
-            min_width: 2800, min_height: 2100, target_ratio: 4/3, ratio_tolerance: 0.05 
-        };
+        const STANDARDS = { target_fps: 30, fps_tolerance: 0.5, format: ".mp4", min_width: 2800, min_height: 2100, target_ratio: 4/3, ratio_tolerance: 0.05 };
         const DURATION_Threshold_Folder = 6 * 3600; 
         const DURATION_Threshold_Avg = 7 * 3600;
 
@@ -208,7 +204,6 @@ createApp({
         const scanning = ref(false);
         const pickedPath = ref('');
         const statusText = ref('');
-        const statusClass = ref('text-muted');
         const showResult = ref(false);
         const videoResults = ref([]);
         const folderResults = ref([]);
@@ -238,7 +233,7 @@ createApp({
         };
 
         const startScan = async () => {
-            if(!currentDirHandle) return alert("请先通过‘浏览文件夹’选择目录");
+            if(!currentDirHandle) return alert("请先选择文件夹");
             
             scanning.value = true;
             showResult.value = false;
@@ -246,36 +241,45 @@ createApp({
             
             try {
                 const results = [];
-                const folderDurationMap = new Map(); // root -> total_sec
-                const folderValidDurationMap = new Map(); // root -> valid_sec
+                const folderDurationMap = new Map();
+                const folderValidDurationMap = new Map();
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
-                // --- 递归扫描逻辑 (模拟 os.walk) ---
-                const scan = async (handle, relativePath = "") => {
+                // --- 递归函数改进 ---
+                const scan = async (handle) => {
                     for await (const entry of handle.values()) {
                         if (entry.kind === 'directory') {
-                            await scan(entry, entry.name); // 正常递归，传递当前目录名
+                            // 递归时不需要向下传递父级名字，而是由子级自己去查
+                            await scan(entry);
                         } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                             foundVideos = true;
                             const match = entry.name.match(pattern);
                             
-                            // 1:1 复刻 Python api_scan 第 171-173 行逻辑
-                            // 只要该文件所在的目录(entry.parentName) 匹配 文件名解析出的 ID-DATE，即通过结构校验
-                            const fileId = match ? match[1] : null;
-                            const fileDate = match ? match[2] : null;
+                            // 1:1 核心逻辑复刻：
+                            // Python 中 os.path.basename(root) 获取的是包含该文件的最直接的文件夹名
+                            // Web 中，handle.name 就是当前文件的直接父文件夹名
+                            const currentFolderName = handle.name; 
 
-                            if(!match || relativePath !== `${fileId}-${fileDate}`) {
+                            if(!match) {
                                 new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
                                 throw new Error("STRUCTURE_ERROR");
                             }
 
-                            // 分析视频
+                            const fileId = match[1];
+                            const fileDate = match[2];
+
+                            // 校验：父文件夹名 必须等于 ID-DATE
+                            if(currentFolderName !== `${fileId}-${fileDate}`) {
+                                new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
+                                throw new Error("STRUCTURE_ERROR");
+                            }
+
                             const info = await analyzeVideo(await entry.getFile());
                             results.push(info);
 
-                            // 统计各目录时长
-                            const folderKey = relativePath; // 以目录名作为统计键
+                            // 以直接父文件夹作为统计维度
+                            const folderKey = currentFolderName;
                             folderDurationMap.set(folderKey, (folderDurationMap.get(folderKey) || 0) + info.duration_sec);
                             if(info.passed) {
                                 folderValidDurationMap.set(folderKey, (folderValidDurationMap.get(folderKey) || 0) + info.duration_sec);
@@ -290,7 +294,7 @@ createApp({
 
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                // --- 处理统计 (1:1 复刻 Python 后端逻辑) ---
+                // --- 统计计算 (1:1 Python 逻辑) ---
                 let totalQualifiedValidDur = 0;
                 let qualifiedDaysCount = 0;
                 const fResults = [];
@@ -306,9 +310,7 @@ createApp({
 
                     fResults.push({
                         name: folderName,
-                        duration_sec: duration,
                         duration_str: formatDuration(duration),
-                        valid_duration_sec: validDuration,
                         valid_duration_str: formatDuration(validDuration),
                         passed: isPassed
                     });
@@ -317,15 +319,13 @@ createApp({
                 const avgDur = qualifiedDaysCount > 0 ? (totalQualifiedValidDur / qualifiedDaysCount) : 0;
                 const totalSec = results.reduce((a, b) => a + b.duration_sec, 0);
                 const validSec = results.filter(r => r.passed).reduce((a, b) => a + b.duration_sec, 0);
-                const invalidSec = totalSec - validSec;
 
-                // 更新 Vue 响应式数据
                 videoResults.value = results;
                 folderResults.value = fResults;
                 summary.value = {
                     total_duration: formatDuration(totalSec),
                     valid_duration: formatDuration(validSec),
-                    invalid_duration: formatDuration(invalidSec)
+                    invalid_duration: formatDuration(totalSec - validSec)
                 };
                 globalStats.value = {
                     avg_duration_str: formatDuration(avgDur),
@@ -356,7 +356,6 @@ createApp({
                 URL.revokeObjectURL(v.src);
                 const d = v.duration || 0, w = v.videoWidth, h = v.videoHeight, r = w/h;
                 let reasons = [];
-                // 1:1 严格标准校验
                 if(!file.name.toLowerCase().endsWith(STANDARDS.format)) reasons.push(`格式错误`);
                 if(w < STANDARDS.min_width || h < STANDARDS.min_height) reasons.push(`分辨率不足(${w}x${h})`);
                 if(Math.abs(r - STANDARDS.target_ratio) > STANDARDS.ratio_tolerance) reasons.push(`比例错误(${r.toFixed(2)})`);
@@ -382,7 +381,7 @@ createApp({
         };
 
         return { 
-            user, loginInput, loginField, view, browsing, scanning, pickedPath, statusText, statusClass, showResult, folderResults, globalStats, historyData, summary,
+            user, loginInput, loginField, view, browsing, scanning, pickedPath, statusText, showResult, folderResults, globalStats, historyData, summary,
             login, logout, handleBrowse, startScan,
             passList: computed(() => videoResults.value.filter(r=>r.passed)),
             failList: computed(() => videoResults.value.filter(r=>!r.passed)),
