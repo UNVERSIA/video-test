@@ -246,17 +246,15 @@ createApp({
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
-                // --- 递归函数改进 ---
+                //递归检查目录结构
                 const scan = async (handle) => {
                     for await (const entry of handle.values()) {
                         if (entry.kind === 'directory') {
-                            // 递归时不需要向下传递父级名字，而是由子级自己去查
                             await scan(entry);
                         } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                             foundVideos = true;
                             const match = entry.name.match(pattern);
                             
-                            // 1:1 核心逻辑复刻：
                             // Python 中 os.path.basename(root) 获取的是包含该文件的最直接的文件夹名
                             // Web 中，handle.name 就是当前文件的直接父文件夹名
                             const currentFolderName = handle.name; 
@@ -278,7 +276,7 @@ createApp({
                             const info = await analyzeVideo(await entry.getFile());
                             results.push(info);
 
-                            // 以直接父文件夹作为统计维度
+                            //找到直接父文件夹
                             const folderKey = currentFolderName;
                             folderDurationMap.set(folderKey, (folderDurationMap.get(folderKey) || 0) + info.duration_sec);
                             if(info.passed) {
@@ -294,7 +292,6 @@ createApp({
 
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                // --- 统计计算 (1:1 Python 逻辑) ---
                 let totalQualifiedValidDur = 0;
                 let qualifiedDaysCount = 0;
                 const fResults = [];
