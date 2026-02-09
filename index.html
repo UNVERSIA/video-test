@@ -262,7 +262,6 @@
                         <div v-for="(err, idx) in errorList" :key="idx" class="error-item">
                             <div class="d-flex align-items-center mb-1">
                                 <span class="badge bg-danger me-2" style="font-size: 0.7rem;">错误 {{ idx + 1 }}</span>
-                                <span class="text-secondary small" v-if="err.msg">{{ err.msg }}</span>
                             </div>
                             <div class="d-block">
                                 <span v-for="(item, index) in err.pathList" :key="index">
@@ -362,7 +361,6 @@ createApp({
                             let structureError = false;
                             let errorMsg = "";
 
-                            // 1. 基本文件名正则检查
                             if (!match) {
                                 structureError = true;
                                 errorMsg = "文件名不符合规范 (ID-日期-序号)";
@@ -372,13 +370,11 @@ createApp({
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                // 2. 检查父级文件夹是否为 ID-日期
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
                                     errorMsg = "父目录名与文件ID不匹配";
                                 }
 
-                                // 3. 检查更上一级文件夹是否为 ID
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
@@ -387,9 +383,6 @@ createApp({
                                     }
                                 }
 
-                                // 4. 【修改点】多用户模式下：如果层级深度不足
-                                // 多用户模式下，理想结构是 [选择的根目录] -> [UserID] -> [UserID-Date] -> [File]
-                                // 此时 pathStack 至少应该包含 [UserID] 和 [UserID-Date] 的上一级，深度判断逻辑如下：
                                 if (!structureError && mode.value === 'multi' && pathStack.length < 1) {
                                     structureError = true;
                                     errorMsg = "文件夹层级不够 (多用户模式需进入包含UserID的根目录)";
