@@ -20,9 +20,11 @@
         .login-footer { position: absolute; bottom: 10px; width: 100%; text-align: center; color: #adb5bd; font-size: 0.8rem; background: transparent; }
         .login-icon-box { width: 80px; height: 80px; background: #e7f1ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; }
         
-        .error-detail-box { background: #fff3cd; border: 1px solid #ffecb5; border-radius: 6px; padding: 15px; margin-top: 15px; text-align: left; font-size: 0.9rem; }
-        .error-path-item { font-family: Consolas, Monaco, 'Courier New', monospace; background: rgba(0,0,0,0.08); padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #d63384; display: inline-block; margin: 2px 0; }
-        .error-arrow { color: #6c757d; margin: 0 5px; font-weight: bold; }
+        .error-detail-box { background: #fff3cd; border: 1px solid #ffecb5; border-radius: 6px; padding: 10px; margin-top: 15px; text-align: left; font-size: 0.85rem; max-height: 300px; overflow-y: auto; }
+        .error-item { border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 8px; margin-bottom: 8px; }
+        .error-item:last-child { border-bottom: none; margin-bottom: 0; }
+        .error-path-item { font-family: Consolas, Monaco, 'Courier New', monospace; background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #d63384; display: inline-block; margin: 2px 0; }
+        .error-arrow { color: #6c757d; margin: 0 4px; font-weight: bold; font-size: 0.8em; }
     </style>
 </head>
 <body>
@@ -56,9 +58,14 @@
             <div class="row g-0">
                 <div class="col-md-2 sidebar">
                     <h5 class="text-center mb-4"><i class="bi bi-film"></i> 视频检测系统</h5>
-                    <div class="text-center mb-4 text-white-50 small">
-                        <div class="badge bg-secondary mt-1 fs-6">{{ mode === 'single' ? '单用户模式' : '多用户模式' }}</div>
+                    
+                    <div class="text-center mb-4 text-white-50">
+                        <i class="bi bi-person-circle fs-3 mb-2 d-block text-white"></i>
+                        <div class="badge bg-secondary fw-normal" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                            {{ mode === 'single' ? '单用户模式' : '多用户模式' }}
+                        </div>
                     </div>
+
                     <a @click="view='scan'" :class="{active: view==='scan'}"><i class="bi bi-speedometer2"></i> 检测中心</a>
                     <a @click="view='history'" :class="{active: view==='history'}"><i class="bi bi-clock-history"></i> 历史记录</a>
                     <a @click="logout" class="text-danger mt-5"><i class="bi bi-box-arrow-right"></i> 退出登录</a>
@@ -218,11 +225,11 @@
                             <div class="card card-custom p-4">
                                 <h4><i class="bi bi-clock-history text-primary"></i> 历史检测记录</h4>
                                 <table class="table table-hover mt-3 align-middle">
-                                    <thead class="table-light"><tr><th>时间</th><th>模式</th><th>检测路径</th><th>结果(合格/总数)</th></tr></thead>
+                                    <thead class="table-light"><tr><th>模式</th><th>时间</th><th>检测路径</th><th>结果(合格/总数)</th></tr></thead>
                                     <tbody>
                                         <tr v-for="h in historyData">
-                                            <td>{{h.time}}</td>
                                             <td><span class="badge bg-light text-dark border">{{h.mode==='single'?'单用户':'多用户'}}</span></td>
+                                            <td class="text-muted small">{{h.time}}</td>
                                             <td class="text-muted small">{{h.path}}</td>
                                             <td><span class="text-success">{{h.pass_count}}</span> / {{h.total}}</td>
                                         </tr>
@@ -245,16 +252,21 @@
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body text-center p-4">
-                    <h4 class="text-danger mb-3">文件位置或命名不符合规范</h4>
+                    <h4 class="text-danger mb-3">存在不符合规范的路径</h4>
+                    <p class="text-muted small mb-2">以下路径不符合命名规范或层级要求（共发现 {{ errorList.length }} 处）</p>
                     
-                    <div v-if="errorDebugInfo" class="error-detail-box text-center">
-                        <h6 class="text-dark fw-bold pb-2 mb-2"><i class="bi bi-search"></i> 系统读取到的完整路径：</h6>
-                        
-                        <div class="mb-3">
-                            <span v-for="(item, index) in errorDebugInfo.pathList" :key="index">
-                                <span class="error-path-item">{{ item }}</span>
-                                <span v-if="index < errorDebugInfo.pathList.length - 1" class="error-arrow"><i class="bi bi-chevron-right"></i></span>
-                            </span>
+                    <div v-if="errorList.length > 0" class="error-detail-box">
+                        <div v-for="(err, idx) in errorList" :key="idx" class="error-item">
+                            <div class="d-flex align-items-center mb-1">
+                                <span class="badge bg-danger me-2" style="font-size: 0.7rem;">错误 {{ idx + 1 }}</span>
+                                <span class="text-danger small fw-bold">{{ err.reason }}</span>
+                            </div>
+                            <div class="d-block">
+                                <span v-for="(item, index) in err.pathList" :key="index">
+                                    <span class="error-path-item">{{ item }}</span>
+                                    <span v-if="index < err.pathList.length - 1" class="error-arrow"><i class="bi bi-chevron-right"></i></span>
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -294,7 +306,8 @@ createApp({
         const globalStats = ref({ avg_duration_str: '00:00:00', avg_passed: false, qualified_days: 0 });
         const historyData = ref(JSON.parse(localStorage.getItem('qc_history') || '[]'));
         
-        const errorDebugInfo = ref(null);
+        // 修改：改为 errorList 数组以存储多个错误
+        const errorList = ref([]);
         let currentDirHandle = null;
 
         const login = (selectedMode) => {
@@ -329,12 +342,12 @@ createApp({
             
             scanning.value = true;
             showResult.value = false;
-            errorDebugInfo.value = null;
+            errorList.value = []; // 重置错误列表
             statusText.value = '<span class="text-primary">正在扫描分析...</span>';
             
             try {
                 const results = [];
-                // 校验规则: ID-日期-序号
+                const detectedErrors = []; // 临时收集错误
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
@@ -345,30 +358,43 @@ createApp({
                         } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                             foundVideos = true;
                             
-                            // 检测逻辑
                             const match = entry.name.match(pattern);
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
+                            let errorReason = '';
 
-                            // 三级文件名格式检查
-                            if (!match) structureError = true;
-                            else {
+                            // 1. 文件名检查
+                            if (!match) {
+                                structureError = true;
+                                errorReason = '文件名格式错误';
+                            } else {
                                 const fileId = match[1];   
                                 const fileDate = match[2]; 
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                // 直接父级检查
+                                // 2. 父级检查
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
+                                    errorReason = '父文件夹命名不匹配';
                                 }
 
-                                // 一级文件名检查
+                                // 3. 爷爷级检查
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
                                         structureError = true;
+                                        errorReason = '一级文件夹命名不匹配';
                                     }
+                                }
+
+                                // 4. 多用户模式下的层级深度检查
+                                // 多用户模式要求: Root -> User -> Date -> File
+                                // File位于 pathStack 深度至少为2 (Level 0是Root, Level 1是User)
+                                // 如果 pathStack 长度 < 2，说明文件直接在 Root 或 Root->Folder 中，层级不够
+                                if (!structureError && mode.value === 'multi' && pathStack.length < 2) {
+                                    structureError = true;
+                                    errorReason = '多用户模式下层级过浅 (需≥3级)';
                                 }
                             }
 
@@ -376,16 +402,18 @@ createApp({
                                 const fullPathNames = pathStack.map(h => h.name);
                                 fullPathNames.push(currentFolderName);
                                 fullPathNames.push(entry.name);
-
-                                errorDebugInfo.value = { pathList: fullPathNames };
-                                new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
-                                throw new Error("STRUCTURE_ERROR");
+                                
+                                detectedErrors.push({
+                                    pathList: fullPathNames,
+                                    reason: errorReason
+                                });
+                                // 发现错误，不再分析此视频，但继续扫描
+                                continue; 
                             }
 
                             const info = await analyzeVideo(await entry.getFile());
                             if(match) info.userId = match[1]; 
                             info.folderKey = currentFolderName;
-                            
                             results.push(info);
                         }
                     }
@@ -393,9 +421,18 @@ createApp({
 
                 await scan(currentDirHandle, []);
 
+                // 检查是否有错误
+                if (detectedErrors.length > 0) {
+                    errorList.value = detectedErrors;
+                    new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
+                    // 这里不抛出错误，而是直接停止后续统计
+                    statusText.value = `<span class='text-danger fw-bold'>发现 ${detectedErrors.length} 处路径错误，请修正后重试。</span>`;
+                    return; 
+                }
+
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                // 数据统计逻辑
+                // 数据统计
                 if (mode.value === 'single') {
                     processSingleUserStats(results);
                 } else {
@@ -407,11 +444,7 @@ createApp({
                 saveHistory();
 
             } catch (e) {
-                if(e.message === "STRUCTURE_ERROR") {
-                    statusText.value = `<span class='text-danger fw-bold'>目录结构错误</span>`;
-                } else {
-                    statusText.value = `<span class='text-danger'>${e.message}</span>`;
-                }
+                statusText.value = `<span class='text-danger'>${e.message}</span>`;
             } finally {
                 scanning.value = false;
             }
@@ -555,7 +588,7 @@ createApp({
 
         return { 
             isLoggedIn, mode, view, browsing, scanning, pickedPath, statusText, showResult, folderResults, globalStats, historyData, summary,
-            errorDebugInfo, multiUserStats,
+            errorList, multiUserStats,
             login, logout, handleBrowse, startScan,
             passList: computed(() => videoResults.value.filter(r=>r.passed)),
             failList: computed(() => videoResults.value.filter(r=>!r.passed)),
