@@ -288,7 +288,6 @@ createApp({
         const DURATION_Threshold_Folder = 6 * 3600; 
         const DURATION_Threshold_Avg = 7 * 3600;
 
-        // 修改点1：取消自动登录，每次重置为false
         const isLoggedIn = ref(false); 
         const mode = ref('single'); 
         const view = ref('scan');
@@ -338,7 +337,7 @@ createApp({
             
             scanning.value = true;
             showResult.value = false;
-            errorList.value = []; // 重置错误列表
+            errorList.value = []; //重置错误列表
             statusText.value = '<span class="text-primary">正在扫描分析...</span>';
             
             try {
@@ -358,7 +357,7 @@ createApp({
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
 
-                            // 1. 文件名检查
+                            //文件名检查
                             if (!match) {
                                 structureError = true;
                             } else {
@@ -367,12 +366,12 @@ createApp({
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                // 2. 父级检查
+                                //父级检查
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
                                 }
 
-                                // 3. 爷爷级检查
+                                //一级检查
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
@@ -380,7 +379,7 @@ createApp({
                                     }
                                 }
 
-                                // 4. 多用户模式层级检查
+                                //多用户模式层级检查
                                 if (!structureError && mode.value === 'multi' && pathStack.length < 2) {
                                     structureError = true;
                                 }
@@ -394,7 +393,6 @@ createApp({
                                 detectedErrors.push({
                                     pathList: fullPathNames
                                 });
-                                // 修改点2：不再记录错误原因
                                 continue; 
                             }
 
