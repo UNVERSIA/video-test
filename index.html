@@ -259,8 +259,7 @@
                         <div v-for="(err, idx) in errorList" :key="idx" class="error-item">
                             <div class="d-flex align-items-center mb-1">
                                 <span class="badge bg-danger me-2" style="font-size: 0.7rem;">错误 {{ idx + 1 }}</span>
-                                <span class="text-danger small fw-bold">{{ err.reason }}</span>
-                            </div>
+                                </div>
                             <div class="d-block">
                                 <span v-for="(item, index) in err.pathList" :key="index">
                                     <span class="error-path-item">{{ item }}</span>
@@ -289,8 +288,9 @@ createApp({
         const DURATION_Threshold_Folder = 6 * 3600; 
         const DURATION_Threshold_Avg = 7 * 3600;
 
-        const isLoggedIn = ref(localStorage.getItem('qc_logged_in') === 'true');
-        const mode = ref(localStorage.getItem('qc_mode') || 'single'); 
+        // 修改点1：取消自动登录，每次重置为false
+        const isLoggedIn = ref(false); 
+        const mode = ref('single'); 
         const view = ref('scan');
         const browsing = ref(false);
         const scanning = ref(false);
@@ -306,20 +306,16 @@ createApp({
         const globalStats = ref({ avg_duration_str: '00:00:00', avg_passed: false, qualified_days: 0 });
         const historyData = ref(JSON.parse(localStorage.getItem('qc_history') || '[]'));
         
-        // 修改：改为 errorList 数组以存储多个错误
         const errorList = ref([]);
         let currentDirHandle = null;
 
         const login = (selectedMode) => {
             isLoggedIn.value = true;
             mode.value = selectedMode;
-            localStorage.setItem('qc_logged_in', 'true');
-            localStorage.setItem('qc_mode', selectedMode);
         };
 
         const logout = () => { 
             isLoggedIn.value = false; 
-            localStorage.removeItem('qc_logged_in'); 
             location.reload(); 
         };
 
@@ -347,7 +343,7 @@ createApp({
             
             try {
                 const results = [];
-                const detectedErrors = []; // 临时收集错误
+                const detectedErrors = []; 
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
@@ -361,12 +357,10 @@ createApp({
                             const match = entry.name.match(pattern);
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
-                            let errorReason = '';
 
                             // 1. 文件名检查
                             if (!match) {
                                 structureError = true;
-                                errorReason = '文件名格式错误';
                             } else {
                                 const fileId = match[1];   
                                 const fileDate = match[2]; 
@@ -376,7 +370,6 @@ createApp({
                                 // 2. 父级检查
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
-                                    errorReason = '父文件夹命名不匹配';
                                 }
 
                                 // 3. 爷爷级检查
@@ -384,17 +377,12 @@ createApp({
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
                                         structureError = true;
-                                        errorReason = '一级文件夹命名不匹配';
                                     }
                                 }
 
-                                // 4. 多用户模式下的层级深度检查
-                                // 多用户模式要求: Root -> User -> Date -> File
-                                // File位于 pathStack 深度至少为2 (Level 0是Root, Level 1是User)
-                                // 如果 pathStack 长度 < 2，说明文件直接在 Root 或 Root->Folder 中，层级不够
+                                // 4. 多用户模式层级检查
                                 if (!structureError && mode.value === 'multi' && pathStack.length < 2) {
                                     structureError = true;
-                                    errorReason = '多用户模式下层级过浅 (需≥3级)';
                                 }
                             }
 
@@ -404,10 +392,9 @@ createApp({
                                 fullPathNames.push(entry.name);
                                 
                                 detectedErrors.push({
-                                    pathList: fullPathNames,
-                                    reason: errorReason
+                                    pathList: fullPathNames
                                 });
-                                // 发现错误，不再分析此视频，但继续扫描
+                                // 修改点2：不再记录错误原因
                                 continue; 
                             }
 
@@ -421,18 +408,15 @@ createApp({
 
                 await scan(currentDirHandle, []);
 
-                // 检查是否有错误
                 if (detectedErrors.length > 0) {
                     errorList.value = detectedErrors;
                     new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
-                    // 这里不抛出错误，而是直接停止后续统计
                     statusText.value = `<span class='text-danger fw-bold'>发现 ${detectedErrors.length} 处路径错误，请修正后重试。</span>`;
                     return; 
                 }
 
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                // 数据统计
                 if (mode.value === 'single') {
                     processSingleUserStats(results);
                 } else {
