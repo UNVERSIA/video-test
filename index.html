@@ -250,7 +250,10 @@
     <div class="modal fade" id="namingErrorModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 目录或文件结构错误</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
                 <div class="modal-body text-center p-4">
                     <h4 class="text-danger mb-3">存在不符合规范的路径</h4>
                     <p class="text-muted small mb-2">以下路径不符合命名规范或层级要求（共发现 {{ errorList.length }} 处）</p>
@@ -259,7 +262,8 @@
                         <div v-for="(err, idx) in errorList" :key="idx" class="error-item">
                             <div class="d-flex align-items-center mb-1">
                                 <span class="badge bg-danger me-2" style="font-size: 0.7rem;">错误 {{ idx + 1 }}</span>
-                                </div>
+                                <span class="text-secondary small" v-if="err.msg">{{ err.msg }}</span>
+                            </div>
                             <div class="d-block">
                                 <span v-for="(item, index) in err.pathList" :key="index">
                                     <span class="error-path-item">{{ item }}</span>
@@ -280,7 +284,7 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed } = Vue;
 
 createApp({
     setup() {
@@ -337,7 +341,7 @@ createApp({
             
             scanning.value = true;
             showResult.value = false;
-            errorList.value = []; //重置错误列表
+            errorList.value = []; 
             statusText.value = '<span class="text-primary">正在扫描分析...</span>';
             
             try {
@@ -356,32 +360,39 @@ createApp({
                             const match = entry.name.match(pattern);
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
+                            let errorMsg = "";
 
-                            //文件名检查
+                            // 1. 基本文件名正则检查
                             if (!match) {
                                 structureError = true;
+                                errorMsg = "文件名不符合规范 (ID-日期-序号)";
                             } else {
                                 const fileId = match[1];   
                                 const fileDate = match[2]; 
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                //父级检查
+                                // 2. 检查父级文件夹是否为 ID-日期
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
+                                    errorMsg = "父目录名与文件ID不匹配";
                                 }
 
-                                //一级检查
+                                // 3. 检查更上一级文件夹是否为 ID
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
                                         structureError = true;
+                                        errorMsg = "根目录层级缺失或不匹配";
                                     }
                                 }
 
-                                //多用户模式层级检查
-                                if (!structureError && mode.value === 'multi' && pathStack.length < 2) {
+                                // 4. 【修改点】多用户模式下：如果层级深度不足
+                                // 多用户模式下，理想结构是 [选择的根目录] -> [UserID] -> [UserID-Date] -> [File]
+                                // 此时 pathStack 至少应该包含 [UserID] 和 [UserID-Date] 的上一级，深度判断逻辑如下：
+                                if (!structureError && mode.value === 'multi' && pathStack.length < 1) {
                                     structureError = true;
+                                    errorMsg = "文件夹层级不够 (多用户模式需进入包含UserID的根目录)";
                                 }
                             }
 
@@ -391,7 +402,8 @@ createApp({
                                 fullPathNames.push(entry.name);
                                 
                                 detectedErrors.push({
-                                    pathList: fullPathNames
+                                    pathList: fullPathNames,
+                                    msg: errorMsg
                                 });
                                 continue; 
                             }
