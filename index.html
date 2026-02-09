@@ -28,7 +28,7 @@
 <body>
 
 <div id="app" class="wrapper">
-    <div v-if="!user" class="container d-flex justify-content-center align-items-center" style="height: 90vh;">
+    <div v-if="!isLoggedIn" class="container d-flex justify-content-center align-items-center" style="height: 90vh;">
         <div class="card card-custom p-5 shadow-lg" style="width: 500px; position: relative;">
             <div class="text-center mb-5">
                 <div class="login-icon-box"><i class="bi bi-camera-reels-fill" style="font-size: 2.5rem; color: #0d6efd;"></i></div>
@@ -57,9 +57,7 @@
                 <div class="col-md-2 sidebar">
                     <h5 class="text-center mb-4"><i class="bi bi-film"></i> 视频检测系统</h5>
                     <div class="text-center mb-4 text-white-50 small">
-                        <i class="bi bi-person-circle fs-4 mb-1 d-block text-white"></i>
-                        当前ID: <span class="text-white fw-bold">{{ user }}</span>
-                        <div class="badge bg-secondary mt-1">{{ mode === 'single' ? '单用户模式' : '多用户模式' }}</div>
+                        <div class="badge bg-secondary mt-1 fs-6">{{ mode === 'single' ? '单用户模式' : '多用户模式' }}</div>
                     </div>
                     <a @click="view='scan'" :class="{active: view==='scan'}"><i class="bi bi-speedometer2"></i> 检测中心</a>
                     <a @click="view='history'" :class="{active: view==='history'}"><i class="bi bi-clock-history"></i> 历史记录</a>
@@ -220,8 +218,15 @@
                             <div class="card card-custom p-4">
                                 <h4><i class="bi bi-clock-history text-primary"></i> 历史检测记录</h4>
                                 <table class="table table-hover mt-3 align-middle">
-                                    <thead class="table-light"><tr><th>时间</th><th>用户ID</th><th>模式</th><th>检测路径</th><th>结果(合格/总数)</th></tr></thead>
-                                    <tbody><tr v-for="h in historyData"><td>{{h.time}}</td><td>{{h.user}}</td><td><span class="badge bg-light text-dark border">{{h.mode==='single'?'单用户':'多用户'}}</span></td><td class="text-muted small">{{h.path}}</td><td><span class="text-success">{{h.pass_count}}</span> / {{h.total}}</td></tr></tbody>
+                                    <thead class="table-light"><tr><th>时间</th><th>模式</th><th>检测路径</th><th>结果(合格/总数)</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="h in historyData">
+                                            <td>{{h.time}}</td>
+                                            <td><span class="badge bg-light text-dark border">{{h.mode==='single'?'单用户':'多用户'}}</span></td>
+                                            <td class="text-muted small">{{h.path}}</td>
+                                            <td><span class="text-success">{{h.pass_count}}</span> / {{h.total}}</td>
+                                        </tr>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
@@ -251,14 +256,6 @@
                                 <span v-if="index < errorDebugInfo.pathList.length - 1" class="error-arrow"><i class="bi bi-chevron-right"></i></span>
                             </span>
                         </div>
-                        
-                        <div class="text-muted small fst-italic mt-2 p-2 bg-white rounded border">
-                            <strong><i class="bi bi-info-circle"></i> 检测标准 (倒数三级):</strong><br>
-                            1. <strong>文件名</strong>: [ID]-[日期]-[序号].mp4<br>
-                            2. <strong>父文件夹</strong>: [ID]-[日期]<br>
-                            3. <strong>爷爷文件夹</strong>: [ID]<br>
-                            * 三级以上的文件夹名称不限
-                        </div>
                     </div>
 
                     <img src="static/structure_guide.png" class="img-fluid border rounded shadow-sm mt-3" style="max-height: 250px;" alt="结构示意图">
@@ -280,7 +277,7 @@ createApp({
         const DURATION_Threshold_Folder = 6 * 3600; 
         const DURATION_Threshold_Avg = 7 * 3600;
 
-        const user = ref(localStorage.getItem('qc_current_user') || '');
+        const isLoggedIn = ref(localStorage.getItem('qc_logged_in') === 'true');
         const mode = ref(localStorage.getItem('qc_mode') || 'single'); 
         const view = ref('scan');
         const browsing = ref(false);
@@ -301,26 +298,15 @@ createApp({
         let currentDirHandle = null;
 
         const login = (selectedMode) => {
-            const prefix = selectedMode === 'single' ? 'Single-' : 'Multi-';
-            const countKey = selectedMode === 'single' ? 'qc_su_count' : 'qc_mu_count';
-            
-            let currentCount = parseInt(localStorage.getItem(countKey) || '0');
-            currentCount++;
-            localStorage.setItem(countKey, currentCount.toString());
-
-            //自动分配
-            const newId = prefix + String(currentCount).padStart(3, '0');
-            
-            user.value = newId;
+            isLoggedIn.value = true;
             mode.value = selectedMode;
-            
-            localStorage.setItem('qc_current_user', newId);
+            localStorage.setItem('qc_logged_in', 'true');
             localStorage.setItem('qc_mode', selectedMode);
         };
 
         const logout = () => { 
-            user.value = ''; 
-            localStorage.removeItem('qc_current_user'); 
+            isLoggedIn.value = false; 
+            localStorage.removeItem('qc_logged_in'); 
             location.reload(); 
         };
 
@@ -348,7 +334,7 @@ createApp({
             
             try {
                 const results = [];
-                //校验规则: ID-日期-序号
+                // 校验规则: ID-日期-序号
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
@@ -359,12 +345,12 @@ createApp({
                         } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                             foundVideos = true;
                             
-                            //检测逻辑
+                            // 检测逻辑
                             const match = entry.name.match(pattern);
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
 
-                            //三级文件名格式检查
+                            // 三级文件名格式检查
                             if (!match) structureError = true;
                             else {
                                 const fileId = match[1];   
@@ -372,12 +358,12 @@ createApp({
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                //直接父级检查
+                                // 直接父级检查
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
                                 }
 
-                                //一级文件名检查
+                                // 一级文件名检查
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
                                     if (parentEntry.name !== expectedParentName) {
@@ -409,7 +395,7 @@ createApp({
 
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                //数据统计逻辑
+                // 数据统计逻辑
                 if (mode.value === 'single') {
                     processSingleUserStats(results);
                 } else {
@@ -559,7 +545,7 @@ createApp({
 
         const saveHistory = () => {
             const h = { 
-                time: new Date().toLocaleString(), user: user.value, mode: mode.value,
+                time: new Date().toLocaleString(), mode: mode.value,
                 path: pickedPath.value, total: videoResults.value.length, 
                 pass_count: videoResults.value.filter(r=>r.passed).length 
             };
@@ -568,7 +554,7 @@ createApp({
         };
 
         return { 
-            user, mode, view, browsing, scanning, pickedPath, statusText, showResult, folderResults, globalStats, historyData, summary,
+            isLoggedIn, mode, view, browsing, scanning, pickedPath, statusText, showResult, folderResults, globalStats, historyData, summary,
             errorDebugInfo, multiUserStats,
             login, logout, handleBrowse, startScan,
             passList: computed(() => videoResults.value.filter(r=>r.passed)),
