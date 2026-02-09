@@ -41,10 +41,9 @@
                     <i class="bi bi-person-fill me-2"></i> 单用户检测模式
                 </button>
                 <button @click="login('multi')" class="btn btn-primary btn-lg py-3 fw-bold shadow-sm">
-                    <i class="bi bi-people-fill me-2"></i> 多用户批量检测
+                    <i class="bi bi-people-fill me-2"></i> 多用户检测模式
                 </button>
             </div>
-            <div class="text-center text-muted small mt-2">系统将自动为您分配会话 ID</div>
         </div>
         <div class="login-footer">
             <p class="mb-0">网页开发：吕佳忆</p>
@@ -163,7 +162,7 @@
 
                                 <div v-if="mode === 'multi'">
                                     <div class="alert alert-info border-0 shadow-sm">
-                                        <i class="bi bi-info-circle-fill me-2"></i> 多用户模式下，系统已根据文件名ID自动分类统计。合格标准：该用户平均有效时长≥7小时，且单文件夹≥6小时。
+                                        <i class="bi bi-info-circle-fill me-2"></i> 合格标准：用户平均有效时长≥7小时，且单文件夹≥6小时。
                                     </div>
 
                                     <div class="row">
@@ -264,7 +263,7 @@
 
                     <img src="static/structure_guide.png" class="img-fluid border rounded shadow-sm mt-3" style="max-height: 250px;" alt="结构示意图">
                 </div>
-                <div class="modal-footer justify-content-center"><button class="btn btn-primary px-5" data-bs-dismiss="modal">好的，我去检查</button></div>
+                <div class="modal-footer justify-content-center"><button class="btn btn-primary px-5" data-bs-dismiss="modal">好的</button></div>
             </div>
         </div>
     </div>
@@ -282,7 +281,7 @@ createApp({
         const DURATION_Threshold_Avg = 7 * 3600;
 
         const user = ref(localStorage.getItem('qc_current_user') || '');
-        const mode = ref(localStorage.getItem('qc_mode') || 'single'); // 'single' or 'multi'
+        const mode = ref(localStorage.getItem('qc_mode') || 'single'); 
         const view = ref('scan');
         const browsing = ref(false);
         const scanning = ref(false);
@@ -290,10 +289,9 @@ createApp({
         const statusText = ref('');
         const showResult = ref(false);
         
-        // Data Storage
         const videoResults = ref([]);
-        const folderResults = ref([]); // For Single User Mode
-        const multiUserStats = ref({ passed: [], failed: [] }); // For Multi User Mode
+        const folderResults = ref([]); 
+        const multiUserStats = ref({ passed: [], failed: [] });
         
         const summary = ref({ total_duration: '00:00:00', valid_duration: '00:00:00', invalid_duration: '00:00:00' });
         const globalStats = ref({ avg_duration_str: '00:00:00', avg_passed: false, qualified_days: 0 });
@@ -302,23 +300,20 @@ createApp({
         const errorDebugInfo = ref(null);
         let currentDirHandle = null;
 
-        // Login Logic: Auto ID Generation
         const login = (selectedMode) => {
-            const prefix = selectedMode === 'single' ? 'SU-' : 'MU-';
+            const prefix = selectedMode === 'single' ? 'Single-' : 'Multi-';
             const countKey = selectedMode === 'single' ? 'qc_su_count' : 'qc_mu_count';
             
-            // Get last count, increment, and save
             let currentCount = parseInt(localStorage.getItem(countKey) || '0');
             currentCount++;
             localStorage.setItem(countKey, currentCount.toString());
 
-            // Generate ID: Prefix + 001, 002...
+            //自动分配
             const newId = prefix + String(currentCount).padStart(3, '0');
             
             user.value = newId;
             mode.value = selectedMode;
             
-            // Persist session
             localStorage.setItem('qc_current_user', newId);
             localStorage.setItem('qc_mode', selectedMode);
         };
@@ -353,7 +348,7 @@ createApp({
             
             try {
                 const results = [];
-                // 校验规则: ID(任意字符)-日期(6位)-序号(2位)
+                //校验规则: ID-日期-序号
                 const pattern = /^(.+)-(\d{6})-(\d{2})\.(mp4|mov|avi|mkv)$/i;
                 let foundVideos = false;
 
@@ -364,28 +359,27 @@ createApp({
                         } else if (entry.kind === 'file' && /\.(mp4|mov|avi|mkv)$/i.test(entry.name)) {
                             foundVideos = true;
                             
-                            // --- 检测逻辑 (仅倒数三级) ---
+                            //检测逻辑
                             const match = entry.name.match(pattern);
                             const currentFolderName = dirHandle.name; 
                             let structureError = false;
 
-                            // 1. 文件名格式检查 (Level 3)
+                            //三级文件名格式检查
                             if (!match) structureError = true;
                             else {
-                                const fileId = match[1];   // e.g. XX001
-                                const fileDate = match[2]; // e.g. 251201
+                                const fileId = match[1];   
+                                const fileDate = match[2]; 
                                 const expectedFolderName = `${fileId}-${fileDate}`; 
                                 const expectedParentName = fileId;
 
-                                // 2. 直接父级检查 (Level 2)
+                                //直接父级检查
                                 if (currentFolderName !== expectedFolderName) {
                                     structureError = true;
                                 }
 
-                                // 3. 祖父级检查 (Level 1)
+                                //一级文件名检查
                                 if (!structureError && pathStack.length > 0) {
                                     const parentEntry = pathStack[pathStack.length - 1]; 
-                                    // 仅当爷爷级存在时检查 (如果是Level 2直接上传，pathStack可能为空，但这在逻辑上也是一种错误因为必须有ID文件夹)
                                     if (parentEntry.name !== expectedParentName) {
                                         structureError = true;
                                     }
@@ -401,12 +395,9 @@ createApp({
                                 new bootstrap.Modal(document.getElementById('namingErrorModal')).show();
                                 throw new Error("STRUCTURE_ERROR");
                             }
-                            // --- 检测结束 ---
 
                             const info = await analyzeVideo(await entry.getFile());
-                            // 注入ID，用于多用户聚合
                             if(match) info.userId = match[1]; 
-                            // 注入日期文件夹Key，用于聚合
                             info.folderKey = currentFolderName;
                             
                             results.push(info);
@@ -418,12 +409,10 @@ createApp({
 
                 if(!foundVideos) throw new Error("未找到视频文件");
 
-                // --- 数据统计逻辑 ---
+                //数据统计逻辑
                 if (mode.value === 'single') {
-                    // 单用户逻辑 (保持原有)
                     processSingleUserStats(results);
                 } else {
-                    // 多用户逻辑 (新增)
                     processMultiUserStats(results);
                 }
 
@@ -477,7 +466,6 @@ createApp({
 
             const avgDur = qualifiedDaysCount > 0 ? (totalQualifiedValidDur / qualifiedDaysCount) : 0;
             
-            // Update UI State
             folderResults.value = fResults;
             videoResults.value = results;
             updateSummary(results);
@@ -490,14 +478,12 @@ createApp({
         };
 
         const processMultiUserStats = (results) => {
-            // Group by UserID
-            const users = {}; // { 'ID001': { passedFolders: [], validDurSum: 0 } }
+            const users = {}; 
             
             results.forEach(info => {
                 const uid = info.userId;
                 if(!users[uid]) users[uid] = { folderMap: new Map() };
                 
-                // Aggregate by folder within user
                 const k = info.folderKey;
                 if(!users[uid].folderMap.has(k)) users[uid].folderMap.set(k, 0);
                 
@@ -535,8 +521,8 @@ createApp({
             }
 
             multiUserStats.value = { passed: passedList, failed: failedList };
-            videoResults.value = results; // Store full results anyway for pass/fail counts
-            updateSummary(results); // Update top summary cards
+            videoResults.value = results;
+            updateSummary(results); 
         };
 
         const updateSummary = (results) => {
